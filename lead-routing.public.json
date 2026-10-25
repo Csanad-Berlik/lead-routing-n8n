@@ -1,0 +1,368 @@
+{
+  "name": "lead-routing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "REPLACE-WITH-YOUR-WEBHOOK-PATH",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -704,
+        608
+      ],
+      "id": "682d320c-8953-43ab-b26e-51e42aa57691",
+      "name": "Webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Lead webhook header auth (X-Lead-Secret)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f49ca9ca-b6b1-4618-a055-1b7caa9b4684",
+              "name": "lead_id",
+              "value": "={{ $json.body.lead_id }}",
+              "type": "string"
+            },
+            {
+              "id": "6e1cbdf8-e870-48eb-8121-0cc323cde309",
+              "name": "email",
+              "value": "={{ $json.body.email }}",
+              "type": "string"
+            },
+            {
+              "id": "63c7afae-b97e-46b6-b1ec-c79b3d2a6734",
+              "name": "first_name",
+              "value": "={{ $json.body.first_name }}",
+              "type": "string"
+            },
+            {
+              "id": "b7975765-006c-41cb-8172-da9b9c7b88f7",
+              "name": "job_title",
+              "value": "={{ $json.body.job_title }}",
+              "type": "string"
+            },
+            {
+              "id": "ac83ce5e-550e-4291-8eb7-fc0943264f67",
+              "name": "domain",
+              "value": "={{ $json.body.domain }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -576,
+        608
+      ],
+      "id": "9b617f7f-c85e-4c11-8ba6-b55893e05331",
+      "name": "Flatten"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a3a2823d-0924-44d4-869c-5924ccf3f6b8",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -432,
+        608
+      ],
+      "id": "df3fa2eb-dce3-48c4-854a-7219630d3e07",
+      "name": "Has email"
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.lead_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        304
+      ],
+      "id": "9474aa35-f359-42ae-88d6-a2f37b450eaa",
+      "name": "Remove Duplicates"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_DATA_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "companies"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "domain",
+              "keyValue": "={{ $json.domain }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -128,
+        304
+      ],
+      "id": "ff68d8d3-899d-4c61-a214-ed219aa87c47",
+      "name": "Get row(s)",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const lead = $('Flatten').first().json;\nconst company = $json;\n\nconst known = company.employee_count !== undefined && \n  company.employee_count !== null;\nconst employees = Number(company.employee_count);\nconst targetCountries = ['US', 'GB', 'DE', 'NL'];\n\nlet points = 0;\n\nif (employees >= 51 && employees <= 500) {\n  points += 2;\n} else if ((employees >= 11 && employees <= 50) || (employees >= 501 && employees <= 2000)) {\n  points += 1;\n}\n\nif (targetCountries.includes(company.country)) {\n  points += 1;\n}\n\nif (/\\b(founder|chief|vp|vice president|head|director)\\b/i.test(lead.job_title)) {\n  points += 1;\n}\n\nlet grade = 'Unknown';\nlet reason = 'Company not in the list, check by hand';\n\nif (known) {\n  if (points >= 4) {\n    grade = 'A';\n  } else if (points >= 2) {\n    grade = 'B';\n  } else {\n    grade = 'C';\n  }\n  const pointWord = points === 1 ? 'point' : 'points';\n    reason = `Grade ${grade} (${points} ${pointWord}):  \n    ${employees} employees, ${company.country}, \n    ${lead.job_title}`;\n}\n\nreturn { json: { ...lead, points, grade, reason } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        304
+      ],
+      "id": "04167dde-1e67-4e53-bcf4-73e9268bf4f0",
+      "name": "Score lead"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3b1b071-d844-49cf-8053-06a0d6ef35a9",
+              "leftValue": "={{ $json.grade }}",
+              "rightValue": "A",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        128,
+        304
+      ],
+      "id": "0b68366a-4adb-400e-a91a-930986d81760",
+      "name": "Is grade A"
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "contactOwner": "REPLACE_WITH_OWNER_1_ID",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "lead_grade",
+                "value": "={{ $json.grade }}"
+              },
+              {
+                "property": "routing_reason",
+                "value": "={{ $json.reason }}"
+              }
+            ]
+          },
+          "firstName": "={{ $json.first_name }}",
+          "jobTitle": "={{ $json.job_title}}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        208
+      ],
+      "id": "ae39a211-baf2-4fd9-b224-974ec08859d2",
+      "name": "Save contact (Owner 1)",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "REPLACE_ME",
+          "name": "HubSpot service key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "contactOwner": "REPLACE_WITH_OWNER_2_ID",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "lead_grade",
+                "value": "={{ $json.grade }}"
+              },
+              {
+                "property": "routing_reason",
+                "value": "={{ $json.reason }}"
+              }
+            ]
+          },
+          "firstName": "={{ $json.first_name }}",
+          "jobTitle": "={{ $json.job_title}}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        384
+      ],
+      "id": "4737e893-6d31-4b45-bab3-7db63c105ad1",
+      "name": "Save contact (Owner 2)",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "REPLACE_ME",
+          "name": "HubSpot service key"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Flatten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten": {
+      "main": [
+        [
+          {
+            "node": "Has email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has email": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Score lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score lead": {
+      "main": [
+        [
+          {
+            "node": "Is grade A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is grade A": {
+      "main": [
+        [
+          {
+            "node": "Save contact (Owner 1)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save contact (Owner 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}
